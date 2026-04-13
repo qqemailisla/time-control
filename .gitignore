@@ -1,0 +1,6 @@
+﻿# Optional local override (do not commit secrets)
+cloud-config.local.js
+
+# OS files
+.DS_Store
+Thumbs.db

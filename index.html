@@ -1,0 +1,175 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>学业时间管理台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="backdrop"></div>
+  <div class="app-shell">
+    <aside class="sidebar card">
+      <div class="sidebar-head">
+        <p class="eyebrow">Study Planner</p>
+        <h1>学业时间管理台</h1>
+        <p class="caption">莫兰迪浅蓝主题 · 项目与进度并行管理</p>
+      </div>
+
+      <section class="cloud-block card soft">
+        <div class="task-list-head">
+          <h2>云端同步</h2>
+          <span id="cloud-mode-badge" class="pill cloud-pill cloud-pill-local">本地模式</span>
+        </div>
+        <p id="cloud-status" class="caption">未连接 Supabase，当前仅保存在本机浏览器。</p>
+
+        <form id="auth-form" class="stack auth-form" autocomplete="off">
+          <label class="field">
+            <span>邮箱登录</span>
+            <input id="auth-email" type="email" placeholder="yourname@example.com" />
+          </label>
+          <button type="submit" class="btn btn-ghost">发送登录链接</button>
+        </form>
+
+        <div id="auth-user-row" class="auth-user-row hidden">
+          <p id="auth-user-email" class="caption"></p>
+          <div class="inline-actions">
+            <button id="sync-now" class="btn btn-ghost" type="button">从云端拉取</button>
+            <button id="push-local" class="btn btn-ghost" type="button">上传本地到云端</button>
+            <button id="sign-out" class="btn btn-ghost" type="button">退出登录</button>
+          </div>
+        </div>
+      </section>
+
+      <form id="project-form" class="stack" autocomplete="off">
+        <label class="field">
+          <span>项目名称</span>
+          <input id="project-name" type="text" placeholder="例如：高等数学期末复习" required />
+        </label>
+        <label class="field">
+          <span>预计开始时间</span>
+          <input id="project-start" type="datetime-local" required />
+        </label>
+        <label class="field">
+          <span>预计结束时间</span>
+          <input id="project-end" type="datetime-local" required />
+        </label>
+        <button type="submit" class="btn btn-primary">新增项目</button>
+      </form>
+
+      <div class="divider"></div>
+
+      <div class="projects-wrap">
+        <h2>我的项目</h2>
+        <ul id="project-list" class="project-list"></ul>
+      </div>
+    </aside>
+
+    <main class="main-panel card" id="main-panel">
+      <section id="empty-state" class="empty-state">
+        <h2>先创建一个学习项目</h2>
+        <p>输入项目名称、开始时间和结束时间后，就可以继续添加子任务并查看时间可视化。</p>
+      </section>
+
+      <section id="project-view" class="project-view hidden">
+        <header class="project-header">
+          <div>
+            <p class="eyebrow">当前项目</p>
+            <h2 id="active-project-title"></h2>
+            <p id="project-window" class="caption"></p>
+          </div>
+          <div class="view-switch" role="tablist" aria-label="项目视图切换">
+            <button id="tab-tasks" class="btn btn-tab active" type="button">任务视图</button>
+            <button id="tab-calendar" class="btn btn-tab" type="button">日历缩略图</button>
+          </div>
+        </header>
+
+        <div class="content-grid">
+          <section id="tasks-pane" class="pane active">
+            <div class="task-layout">
+              <article class="task-editor card soft">
+                <h3>添加子任务</h3>
+                <form id="task-form" class="inline-form" autocomplete="off">
+                  <input id="task-title" type="text" placeholder="例如：完成第三章习题 1-20" required />
+                  <button type="submit" class="btn btn-primary">添加</button>
+                </form>
+              </article>
+
+              <article class="task-list-wrap card soft">
+                <div class="task-list-head">
+                  <h3>进行中子任务</h3>
+                  <span id="active-count" class="pill"></span>
+                </div>
+                <ul id="task-list" class="task-list"></ul>
+              </article>
+
+              <article class="task-history card soft">
+                <div class="task-list-head">
+                  <h3>已完成（默认隐藏）</h3>
+                  <button id="toggle-completed" class="btn btn-ghost" type="button">显示</button>
+                </div>
+                <ul id="completed-list" class="task-list hidden"></ul>
+              </article>
+            </div>
+          </section>
+
+          <section id="calendar-pane" class="pane">
+            <article class="card soft calendar-card">
+              <h3>完成进度日历缩略图</h3>
+              <p class="caption">每个日期展示当日完成的子任务，用于回顾阶段性产出。</p>
+              <div id="calendar-grid" class="calendar-grid"></div>
+            </article>
+          </section>
+
+          <aside class="time-panel card soft">
+            <h3>时间进度</h3>
+            <form id="timeline-form" class="stack timeline-form" autocomplete="off">
+              <label class="field">
+                <span>预计开始时间</span>
+                <input id="timeline-start" type="datetime-local" required />
+              </label>
+              <label class="field">
+                <span>预计结束时间</span>
+                <input id="timeline-end" type="datetime-local" required />
+              </label>
+              <button type="submit" class="btn btn-ghost">更新时间区间</button>
+            </form>
+
+            <div class="progress-block">
+              <div class="progress-meta">
+                <span id="progress-label">0%</span>
+                <span id="progress-status" class="caption"></span>
+              </div>
+              <div class="progress-track">
+                <div id="progress-fill" class="progress-fill"></div>
+              </div>
+              <p id="time-summary" class="caption"></p>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <template id="task-item-template">
+    <li class="task-item reveal">
+      <label class="task-check">
+        <input type="checkbox" />
+        <span class="checkmark"></span>
+      </label>
+      <div class="task-copy">
+        <p class="task-title"></p>
+        <p class="task-meta"></p>
+      </div>
+      <button class="btn btn-ghost btn-small" type="button">删除</button>
+    </li>
+  </template>
+
+  <script src="cloud-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+</body>
+</html>
