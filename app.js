@@ -247,6 +247,7 @@ function renderCloudBlock() {
   refs.cloudModeBadge.classList.remove("cloud-pill-local", "cloud-pill-online", "cloud-pill-error");
   refs.otpHint.textContent = `Supabase 邮箱 OTP 默认 ${state.cloud.otpLength} 位。`;
   refs.otpCode.maxLength = state.cloud.otpLength;
+  refs.otpCode.placeholder = `${state.cloud.otpLength}位验证码`;
 
   if (!state.cloud.enabled) {
     refs.cloudModeBadge.textContent = "本地模式";
