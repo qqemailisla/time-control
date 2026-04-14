@@ -1,6 +1,5 @@
-﻿// 将下面两个值替换为你自己的 Supabase 项目配置
-// 注意：anon key 可公开放在前端，service_role key 不可放前端。
-window.CLOUD_CONFIG = {
-  supabaseUrl: "",
-  supabaseAnonKey: "",
+﻿window.CLOUD_CONFIG = {
+  supabaseUrl: "https://ndoiruhjhclugdgnkkkl.supabase.co",
+  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kb2lydWhqaGNsdWdkZ25ra2tsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNjExMjYsImV4cCI6MjA5MTYzNzEyNn0.sO0Te7pGkKGM4Tg3e1qdvq9OeTP48j33MhdgYpuEMqM",
+  otpLength: 6,
 };

@@ -9,6 +9,8 @@ const state = {
     enabled: false,
     client: null,
     user: null,
+    pendingEmail: null,
+    otpLength: 6,
     bootstrapUserId: null,
     statusType: "local",
     statusText: "未连接 Supabase，当前仅保存在本机浏览器。",
@@ -48,6 +50,9 @@ const refs = {
   cloudStatus: document.getElementById("cloud-status"),
   authForm: document.getElementById("auth-form"),
   authEmail: document.getElementById("auth-email"),
+  otpForm: document.getElementById("otp-form"),
+  otpCode: document.getElementById("otp-code"),
+  otpHint: document.getElementById("otp-hint"),
   authUserRow: document.getElementById("auth-user-row"),
   authUserEmail: document.getElementById("auth-user-email"),
   syncNow: document.getElementById("sync-now"),
@@ -240,11 +245,15 @@ function setCloudStatus(type, text) {
 function renderCloudBlock() {
   refs.cloudStatus.textContent = state.cloud.statusText;
   refs.cloudModeBadge.classList.remove("cloud-pill-local", "cloud-pill-online", "cloud-pill-error");
+  refs.otpHint.textContent = `Supabase 邮箱 OTP 默认 ${state.cloud.otpLength} 位。`;
+  refs.otpCode.maxLength = state.cloud.otpLength;
 
   if (!state.cloud.enabled) {
     refs.cloudModeBadge.textContent = "本地模式";
     refs.cloudModeBadge.classList.add("cloud-pill-local");
     refs.authForm.classList.add("hidden");
+    refs.otpForm.classList.add("hidden");
+    refs.otpHint.classList.add("hidden");
     refs.authUserRow.classList.add("hidden");
     return;
   }
@@ -262,10 +271,14 @@ function renderCloudBlock() {
 
   if (state.cloud.user) {
     refs.authForm.classList.add("hidden");
+    refs.otpForm.classList.add("hidden");
+    refs.otpHint.classList.add("hidden");
     refs.authUserRow.classList.remove("hidden");
     refs.authUserEmail.textContent = `当前账号：${state.cloud.user.email || state.cloud.user.id}`;
   } else {
     refs.authForm.classList.remove("hidden");
+    refs.otpForm.classList.toggle("hidden", !state.cloud.pendingEmail);
+    refs.otpHint.classList.toggle("hidden", !state.cloud.pendingEmail);
     refs.authUserRow.classList.add("hidden");
   }
 }
@@ -797,6 +810,8 @@ function restoreAnonymousLocalState() {
 async function initCloud() {
   const supabaseUrl = String(CLOUD_CONFIG.supabaseUrl || "").trim();
   const supabaseAnonKey = String(CLOUD_CONFIG.supabaseAnonKey || "").trim();
+  const cloudOtpLength = Number(CLOUD_CONFIG.otpLength || 6);
+  state.cloud.otpLength = Number.isFinite(cloudOtpLength) && cloudOtpLength >= 4 && cloudOtpLength <= 12 ? cloudOtpLength : 6;
 
   if (!supabaseUrl || !supabaseAnonKey) {
     state.cloud.enabled = false;
@@ -833,10 +848,12 @@ async function initCloud() {
     state.cloud.user = session?.user || null;
 
     if (state.cloud.user) {
+      state.cloud.pendingEmail = null;
       renderCloudBlock();
       void bootstrapCloudForCurrentUser();
     } else {
       state.cloud.bootstrapUserId = null;
+      state.cloud.pendingEmail = null;
       setCloudStatus("local", "已退出登录，当前为本地模式。");
       restoreAnonymousLocalState();
     }
@@ -1068,19 +1085,58 @@ function bindEvents() {
     }
 
     try {
-      setCloudStatus("online", "正在发送登录链接，请检查邮箱...");
-      const redirectTo = `${window.location.origin}${window.location.pathname}`;
+      setCloudStatus("online", "正在发送验证码，请检查邮箱...");
       const { error } = await state.cloud.client.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: redirectTo },
       });
       if (error) {
         throw error;
       }
-      refs.authForm.reset();
-      setCloudStatus("online", "登录链接已发送，请点击邮箱里的链接完成登录。");
+      state.cloud.pendingEmail = email;
+      refs.otpCode.value = "";
+      renderCloudBlock();
+      setCloudStatus("online", `验证码已发送到 ${email}，请输入 ${state.cloud.otpLength} 位验证码。`);
     } catch (error) {
       setCloudStatus("error", `发送失败：${error.message || "未知错误"}`);
+    }
+  });
+
+  refs.otpForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    if (!state.cloud.enabled || !state.cloud.client) {
+      window.alert("请先在 cloud-config.js 中配置 Supabase。");
+      return;
+    }
+    if (!state.cloud.pendingEmail) {
+      window.alert("请先发送验证码。");
+      return;
+    }
+
+    const code = refs.otpCode.value.trim().replace(/\s+/g, "");
+    if (!code) {
+      window.alert("请输入验证码。");
+      return;
+    }
+    if (code.length !== state.cloud.otpLength) {
+      window.alert(`请输入 ${state.cloud.otpLength} 位验证码。`);
+      return;
+    }
+
+    try {
+      setCloudStatus("online", "正在验证验证码...");
+      const { error } = await state.cloud.client.auth.verifyOtp({
+        email: state.cloud.pendingEmail,
+        token: code,
+        type: "email",
+      });
+      if (error) {
+        throw error;
+      }
+      refs.otpForm.reset();
+      setCloudStatus("online", "验证码验证成功，正在登录...");
+    } catch (error) {
+      setCloudStatus("error", `验证码错误或已过期：${error.message || "未知错误"}`);
     }
   });
 

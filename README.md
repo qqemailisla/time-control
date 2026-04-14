@@ -7,7 +7,7 @@
 - 子任务勾选完成后记录完成日期，默认隐藏
 - 任务视图 / 日历缩略图视图切换
 - 右侧时间进度条自动计算
-- Supabase 邮箱登录与云端同步
+- Supabase 邮箱验证码登录与云端同步
 
 ## 项目结构
 
@@ -36,7 +36,7 @@ python -m http.server 8080
 
 1. 按 [`supabase/setup.md`](./supabase/setup.md) 创建 Supabase 项目并执行 SQL。
 2. 编辑 [`cloud-config.js`](./cloud-config.js)，填入 URL 和 anon key。
-3. 启动应用后用邮箱登录，完成云端同步。
+3. 启动应用后用邮箱验证码登录，完成云端同步。
 
 ## 上传到 GitHub
 

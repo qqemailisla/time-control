@@ -31,8 +31,18 @@
             <span>邮箱登录</span>
             <input id="auth-email" type="email" placeholder="yourname@example.com" />
           </label>
-          <button type="submit" class="btn btn-ghost">发送登录链接</button>
+          <button type="submit" class="btn btn-ghost">发送验证码</button>
         </form>
+
+        <form id="otp-form" class="stack auth-form hidden" autocomplete="off">
+          <label class="field">
+            <span>输入邮箱验证码</span>
+            <input id="otp-code" type="text" inputmode="numeric" maxlength="6" placeholder="6位数字验证码" />
+          </label>
+          <button type="submit" class="btn btn-ghost">验证并登录</button>
+        </form>
+
+        <p id="otp-hint" class="caption hidden">Supabase 邮箱 OTP 默认 6 位。</p>
 
         <div id="auth-user-row" class="auth-user-row hidden">
           <p id="auth-user-email" class="caption"></p>
