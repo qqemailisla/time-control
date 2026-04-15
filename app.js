@@ -110,7 +110,7 @@ function normalizeProjects(projects) {
     startAt: project.startAt || null,
     endAt: project.endAt || null,
     createdAt: project.createdAt || new Date().toISOString(),
-    view: project.view || "tasks",
+    view: ["tasks", "calendar", "pomodoro"].includes(project.view) ? project.view : "tasks",
     showCompleted: Boolean(project.showCompleted),
     tasks: Array.isArray(project.tasks)
       ? project.tasks.map((task) => ({
@@ -643,6 +643,9 @@ function stopPomodoroTicker() {
 }
 
 function renderPomodoro(project) {
+  if (!refs.pomodoroTime || !refs.pomodoroStart || !refs.pomodoroStop || !refs.pomodoroLogList) {
+    return;
+  }
   const runningHere = state.pomodoro.runningProjectId === project.id && !!state.pomodoro.startedAt;
   const runningElsewhere = !!state.pomodoro.startedAt && !runningHere;
 
@@ -684,15 +687,20 @@ function renderPomodoro(project) {
 }
 
 function renderViewTabs(project) {
-  const isTask = project.view === "tasks";
-  const isCalendar = project.view === "calendar";
-  const isPomodoro = project.view === "pomodoro";
+  const view = ["tasks", "calendar", "pomodoro"].includes(project.view) ? project.view : "tasks";
+  const isTask = view === "tasks";
+  const isCalendar = view === "calendar";
+  const isPomodoro = view === "pomodoro";
   refs.tabTasks.classList.toggle("active", isTask);
   refs.tabCalendar.classList.toggle("active", isCalendar);
-  refs.tabPomodoro.classList.toggle("active", isPomodoro);
+  if (refs.tabPomodoro) {
+    refs.tabPomodoro.classList.toggle("active", isPomodoro);
+  }
   refs.tasksPane.classList.toggle("active", isTask);
   refs.calendarPane.classList.toggle("active", isCalendar);
-  refs.pomodoroPane.classList.toggle("active", isPomodoro);
+  if (refs.pomodoroPane) {
+    refs.pomodoroPane.classList.toggle("active", isPomodoro);
+  }
 }
 
 function render() {
@@ -1203,6 +1211,9 @@ async function switchView(view) {
   if (!project) {
     return;
   }
+  if (!["tasks", "calendar", "pomodoro"].includes(view)) {
+    return;
+  }
   project.view = view;
   saveState();
   render();
@@ -1361,7 +1372,9 @@ function bindEvents() {
   refs.toggleCompleted.addEventListener("click", () => void toggleCompletedArea());
   refs.tabTasks.addEventListener("click", () => void switchView("tasks"));
   refs.tabCalendar.addEventListener("click", () => void switchView("calendar"));
-  refs.tabPomodoro.addEventListener("click", () => void switchView("pomodoro"));
+  if (refs.tabPomodoro) {
+    refs.tabPomodoro.addEventListener("click", () => void switchView("pomodoro"));
+  }
 
   refs.timelineForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1468,21 +1481,23 @@ function bindEvents() {
     }
   });
 
-  refs.pomodoroStart.addEventListener("click", async () => {
-    const project = getActiveProject();
-    if (!project) {
-      return;
-    }
-    await startPomodoro(project);
-  });
+  if (refs.pomodoroStart && refs.pomodoroStop) {
+    refs.pomodoroStart.addEventListener("click", async () => {
+      const project = getActiveProject();
+      if (!project) {
+        return;
+      }
+      await startPomodoro(project);
+    });
 
-  refs.pomodoroStop.addEventListener("click", async () => {
-    const project = getActiveProject();
-    if (!project) {
-      return;
-    }
-    await stopPomodoro(project);
-  });
+    refs.pomodoroStop.addEventListener("click", async () => {
+      const project = getActiveProject();
+      if (!project) {
+        return;
+      }
+      await stopPomodoro(project);
+    });
+  }
 }
 
 async function boot() {
