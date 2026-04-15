@@ -35,6 +35,7 @@ const refs = {
   tabTasks: document.getElementById("tab-tasks"),
   tabCalendar: document.getElementById("tab-calendar"),
   tabPomodoro: document.getElementById("tab-pomodoro"),
+  editProject: document.getElementById("edit-project"),
   tasksPane: document.getElementById("tasks-pane"),
   calendarPane: document.getElementById("calendar-pane"),
   pomodoroPane: document.getElementById("pomodoro-pane"),
@@ -159,15 +160,26 @@ function getActiveProject() {
   return state.projects.find((project) => project.id === state.activeProjectId) || null;
 }
 
-function parseLocalDateInput(value) {
+function parseDateInput(value, isEndOfDay = false) {
   if (!value) {
     return null;
   }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
     return null;
   }
-  date.setSeconds(0, 0);
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(
+    year,
+    month,
+    day,
+    isEndOfDay ? 23 : 0,
+    isEndOfDay ? 59 : 0,
+    isEndOfDay ? 59 : 0,
+    isEndOfDay ? 999 : 0,
+  );
   return date.toISOString();
 }
 
@@ -181,7 +193,7 @@ function toDateInputValue(iso) {
   }
   const offset = date.getTimezoneOffset();
   const local = new Date(date.getTime() - offset * 60000);
-  return local.toISOString().slice(0, 16);
+  return local.toISOString().slice(0, 10);
 }
 
 function formatDateTime(iso) {
@@ -301,7 +313,7 @@ function calcTaskProgress(task) {
   }
   return {
     ...progress,
-    summary: `预计区间 ${formatDateTime(task.startAt)} - ${formatDateTime(task.endAt)}`,
+    summary: `预计区间 ${formatDateOnly(task.startAt)} - ${formatDateOnly(task.endAt)}`,
   };
 }
 
@@ -374,7 +386,7 @@ function renderProjectList() {
 
 function renderProjectHeader(project) {
   refs.activeProjectTitle.textContent = project.name;
-  refs.projectWindow.textContent = `${formatDateTime(project.startAt)} 至 ${formatDateTime(project.endAt)}`;
+  refs.projectWindow.textContent = `${formatDateOnly(project.startAt)} 至 ${formatDateOnly(project.endAt)}`;
 }
 
 function buildTaskItem(task, completed) {
@@ -387,7 +399,8 @@ function buildTaskItem(task, completed) {
   const progressLabel = fragment.querySelector(".task-progress-label");
   const progressStatus = fragment.querySelector(".task-progress-status");
   const progressFill = fragment.querySelector(".task-progress-fill");
-  const delBtn = fragment.querySelector("button");
+  const editBtn = fragment.querySelector('[data-action="edit"]');
+  const delBtn = fragment.querySelector('[data-action="delete"]');
 
   li.dataset.id = task.id;
   checkbox.checked = completed;
@@ -395,8 +408,8 @@ function buildTaskItem(task, completed) {
   title.textContent = task.title;
   const taskProgress = calcTaskProgress(task);
   meta.textContent = completed
-    ? `完成于 ${formatDateTime(task.completedAt)} · 预计 ${formatDateTime(task.startAt)} - ${formatDateTime(task.endAt)}`
-    : `预计 ${formatDateTime(task.startAt)} - ${formatDateTime(task.endAt)}`;
+    ? `完成于 ${formatDateTime(task.completedAt)} · 预计 ${formatDateOnly(task.startAt)} - ${formatDateOnly(task.endAt)}`
+    : `预计 ${formatDateOnly(task.startAt)} - ${formatDateOnly(task.endAt)}`;
 
   progressLabel.textContent = `${completed ? 100 : taskProgress.percent}%`;
   progressStatus.textContent = completed ? "已完成" : taskProgress.status;
@@ -408,7 +421,12 @@ function buildTaskItem(task, completed) {
     progressWrap.classList.add("hidden");
   }
 
-  delBtn.dataset.action = "delete";
+  if (editBtn) {
+    editBtn.dataset.action = "edit";
+  }
+  if (delBtn) {
+    delBtn.dataset.action = "delete";
+  }
 
   return fragment;
 }
@@ -1167,6 +1185,45 @@ async function addTask(project, title, startAt, endAt) {
   await upsertTaskCloud(project.id, task);
 }
 
+async function editTask(project, taskId) {
+  const task = project.tasks.find((item) => item.id === taskId);
+  if (!task) {
+    return;
+  }
+
+  const nextTitle = window.prompt("修改子任务名称：", task.title);
+  if (nextTitle === null) {
+    return;
+  }
+
+  const nextStartRaw = window.prompt("修改子任务开始日期（YYYY-MM-DD）：", toDateInputValue(task.startAt));
+  if (nextStartRaw === null) {
+    return;
+  }
+  const nextEndRaw = window.prompt("修改子任务结束日期（YYYY-MM-DD）：", toDateInputValue(task.endAt));
+  if (nextEndRaw === null) {
+    return;
+  }
+
+  const nextStart = parseDateInput(nextStartRaw.trim(), false);
+  const nextEnd = parseDateInput(nextEndRaw.trim(), true);
+  if (!nextTitle.trim() || !nextStart || !nextEnd) {
+    window.alert("请填写有效的子任务名称与日期（YYYY-MM-DD）。");
+    return;
+  }
+  if (new Date(nextStart).getTime() >= new Date(nextEnd).getTime()) {
+    window.alert("子任务结束日期必须晚于开始日期。");
+    return;
+  }
+
+  task.title = nextTitle.trim();
+  task.startAt = nextStart;
+  task.endAt = nextEnd;
+  saveState();
+  render();
+  await upsertTaskCloud(project.id, task);
+}
+
 async function updateTask(project, taskId, action) {
   const task = project.tasks.find((item) => item.id === taskId);
   if (!task) {
@@ -1192,6 +1249,40 @@ async function updateTask(project, taskId, action) {
 async function updateTimeline(project, startAt, endAt) {
   project.startAt = startAt;
   project.endAt = endAt;
+  saveState();
+  render();
+  await upsertProjectCloud(project);
+}
+
+async function editProject(project) {
+  const nextName = window.prompt("修改项目名称：", project.name);
+  if (nextName === null) {
+    return;
+  }
+
+  const nextStartRaw = window.prompt("修改项目开始日期（YYYY-MM-DD）：", toDateInputValue(project.startAt));
+  if (nextStartRaw === null) {
+    return;
+  }
+  const nextEndRaw = window.prompt("修改项目结束日期（YYYY-MM-DD）：", toDateInputValue(project.endAt));
+  if (nextEndRaw === null) {
+    return;
+  }
+
+  const nextStart = parseDateInput(nextStartRaw.trim(), false);
+  const nextEnd = parseDateInput(nextEndRaw.trim(), true);
+  if (!nextName.trim() || !nextStart || !nextEnd) {
+    window.alert("请填写有效的项目名称与日期（YYYY-MM-DD）。");
+    return;
+  }
+  if (new Date(nextStart).getTime() >= new Date(nextEnd).getTime()) {
+    window.alert("项目结束日期必须晚于开始日期。");
+    return;
+  }
+
+  project.name = nextName.trim();
+  project.startAt = nextStart;
+  project.endAt = nextEnd;
   saveState();
   render();
   await upsertProjectCloud(project);
@@ -1291,15 +1382,15 @@ function bindEvents() {
     event.preventDefault();
 
     const name = refs.projectName.value.trim();
-    const startAt = parseLocalDateInput(refs.projectStart.value);
-    const endAt = parseLocalDateInput(refs.projectEnd.value);
+    const startAt = parseDateInput(refs.projectStart.value, false);
+    const endAt = parseDateInput(refs.projectEnd.value, true);
 
     if (!name || !startAt || !endAt) {
-      window.alert("请填写完整的项目信息。");
+      window.alert("请填写完整的项目日期信息。");
       return;
     }
     if (new Date(startAt).getTime() >= new Date(endAt).getTime()) {
-      window.alert("结束时间必须晚于开始时间。");
+      window.alert("结束日期必须晚于开始日期。");
       return;
     }
 
@@ -1323,14 +1414,14 @@ function bindEvents() {
     }
 
     const title = refs.taskTitle.value.trim();
-    const startAt = parseLocalDateInput(refs.taskStart.value);
-    const endAt = parseLocalDateInput(refs.taskEnd.value);
+    const startAt = parseDateInput(refs.taskStart.value, false);
+    const endAt = parseDateInput(refs.taskEnd.value, true);
     if (!title || !startAt || !endAt) {
       window.alert("请填写子任务名称与预计开始/结束时间。");
       return;
     }
     if (new Date(startAt).getTime() >= new Date(endAt).getTime()) {
-      window.alert("子任务结束时间必须晚于开始时间。");
+      window.alert("子任务结束日期必须晚于开始日期。");
       return;
     }
 
@@ -1346,6 +1437,10 @@ function bindEvents() {
       return;
     }
     if (actionNode.dataset.action === "toggle") {
+      return;
+    }
+    if (actionNode.dataset.action === "edit") {
+      await editTask(project, row.dataset.id);
       return;
     }
     await updateTask(project, row.dataset.id, actionNode.dataset.action);
@@ -1372,6 +1467,15 @@ function bindEvents() {
   refs.toggleCompleted.addEventListener("click", () => void toggleCompletedArea());
   refs.tabTasks.addEventListener("click", () => void switchView("tasks"));
   refs.tabCalendar.addEventListener("click", () => void switchView("calendar"));
+  if (refs.editProject) {
+    refs.editProject.addEventListener("click", async () => {
+      const project = getActiveProject();
+      if (!project) {
+        return;
+      }
+      await editProject(project);
+    });
+  }
   if (refs.tabPomodoro) {
     refs.tabPomodoro.addEventListener("click", () => void switchView("pomodoro"));
   }
@@ -1383,15 +1487,15 @@ function bindEvents() {
       return;
     }
 
-    const startAt = parseLocalDateInput(refs.timelineStart.value);
-    const endAt = parseLocalDateInput(refs.timelineEnd.value);
+    const startAt = parseDateInput(refs.timelineStart.value, false);
+    const endAt = parseDateInput(refs.timelineEnd.value, true);
 
     if (!startAt || !endAt) {
-      window.alert("请填写完整时间。");
+      window.alert("请填写完整日期。");
       return;
     }
     if (new Date(startAt).getTime() >= new Date(endAt).getTime()) {
-      window.alert("结束时间必须晚于开始时间。");
+      window.alert("结束日期必须晚于开始日期。");
       return;
     }
 

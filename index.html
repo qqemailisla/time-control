@@ -60,12 +60,12 @@
           <input id="project-name" type="text" placeholder="例如：高等数学期末复习" required />
         </label>
         <label class="field">
-          <span>预计开始时间</span>
-          <input id="project-start" type="datetime-local" required />
+          <span>预计开始日期</span>
+          <input id="project-start" type="date" required />
         </label>
         <label class="field">
-          <span>预计结束时间</span>
-          <input id="project-end" type="datetime-local" required />
+          <span>预计结束日期</span>
+          <input id="project-end" type="date" required />
         </label>
         <button type="submit" class="btn btn-primary">新增项目</button>
       </form>
@@ -81,7 +81,7 @@
     <main class="main-panel card" id="main-panel">
       <section id="empty-state" class="empty-state">
         <h2>先创建一个学习项目</h2>
-        <p>输入项目名称、开始时间和结束时间后，就可以继续添加子任务并查看时间可视化。</p>
+        <p>输入项目名称、开始日期和结束日期后，就可以继续添加子任务并查看时间可视化。</p>
       </section>
 
       <section id="project-view" class="project-view hidden">
@@ -91,10 +91,13 @@
             <h2 id="active-project-title"></h2>
             <p id="project-window" class="caption"></p>
           </div>
-          <div class="view-switch" role="tablist" aria-label="项目视图切换">
-            <button id="tab-tasks" class="btn btn-tab active" type="button">任务视图</button>
-            <button id="tab-calendar" class="btn btn-tab" type="button">日历缩略图</button>
-            <button id="tab-pomodoro" class="btn btn-tab" type="button">番茄钟</button>
+          <div class="project-actions">
+            <div class="view-switch" role="tablist" aria-label="项目视图切换">
+              <button id="tab-tasks" class="btn btn-tab active" type="button">任务视图</button>
+              <button id="tab-calendar" class="btn btn-tab" type="button">日历缩略图</button>
+              <button id="tab-pomodoro" class="btn btn-tab" type="button">番茄钟</button>
+            </div>
+            <button id="edit-project" class="btn btn-ghost" type="button">编辑项目</button>
           </div>
         </header>
 
@@ -105,8 +108,8 @@
                 <h3>添加子任务</h3>
                 <form id="task-form" class="inline-form" autocomplete="off">
                   <input id="task-title" type="text" placeholder="例如：完成第三章习题 1-20" required />
-                  <input id="task-start" type="datetime-local" required />
-                  <input id="task-end" type="datetime-local" required />
+                  <input id="task-start" type="date" required />
+                  <input id="task-end" type="date" required />
                   <button type="submit" class="btn btn-primary">添加</button>
                 </form>
               </article>
@@ -176,14 +179,14 @@
             <h3>时间进度</h3>
             <form id="timeline-form" class="stack timeline-form" autocomplete="off">
               <label class="field">
-                <span>预计开始时间</span>
-                <input id="timeline-start" type="datetime-local" required />
+                <span>预计开始日期</span>
+                <input id="timeline-start" type="date" required />
               </label>
               <label class="field">
-                <span>预计结束时间</span>
-                <input id="timeline-end" type="datetime-local" required />
+                <span>预计结束日期</span>
+                <input id="timeline-end" type="date" required />
               </label>
-              <button type="submit" class="btn btn-ghost">更新时间区间</button>
+              <button type="submit" class="btn btn-ghost">更新日期区间</button>
             </form>
 
             <div class="progress-block">
@@ -221,7 +224,10 @@
           </div>
         </div>
       </div>
-      <button class="btn btn-ghost btn-small" type="button">删除</button>
+      <div class="task-item-actions">
+        <button class="btn btn-ghost btn-small" type="button" data-action="edit">编辑</button>
+        <button class="btn btn-ghost btn-small" type="button" data-action="delete">删除</button>
+      </div>
     </li>
   </template>
 
