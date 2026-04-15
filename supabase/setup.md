@@ -4,6 +4,7 @@
 
 1. 登录 Supabase 控制台并创建新项目。
 2. 打开 `SQL Editor`，执行 [`schema.sql`](./schema.sql) 全部内容。
+3. 如果你之前已经执行过旧版脚本，也请再次执行新版 `schema.sql`（会自动补上子任务时间字段和 `pomodoro_logs` 表）。
 
 ## 2. 配置认证
 
@@ -25,7 +26,7 @@
 window.CLOUD_CONFIG = {
   supabaseUrl: "https://YOUR_PROJECT_REF.supabase.co",
   supabaseAnonKey: "YOUR_SUPABASE_ANON_KEY",
-  otpLength: 6,
+  otpLength: 8, // 按你实际收到的验证码位数设置
 };
 ```
 
@@ -33,7 +34,7 @@ window.CLOUD_CONFIG = {
 
 1. 打开应用。
 2. 在左侧“云端同步”中输入邮箱并发送验证码。
-3. 在邮箱中查看验证码（默认 6 位），填回应用完成登录，状态会变为“云端在线”。
+3. 在邮箱中查看验证码（按 `otpLength` 配置位数），填回应用完成登录，状态会变为“云端在线”。
 4. 新建项目和子任务后，刷新页面确认数据仍存在。
 
 ## 5. 如果邮件里只有链接没有验证码

@@ -18,13 +18,32 @@ create table if not exists public.tasks (
   project_id text not null references public.projects (id) on delete cascade,
   user_id uuid not null references auth.users (id) on delete cascade,
   title text not null,
+  start_at timestamptz,
+  end_at timestamptz,
   created_at timestamptz not null default now(),
   completed_at timestamptz
+);
+
+alter table public.tasks add column if not exists start_at timestamptz;
+alter table public.tasks add column if not exists end_at timestamptz;
+
+create table if not exists public.pomodoro_logs (
+  id text primary key,
+  project_id text not null references public.projects (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  work text not null,
+  efficiency text not null default 'normal',
+  start_at timestamptz not null,
+  end_at timestamptz not null,
+  duration_sec integer not null default 0,
+  created_at timestamptz not null default now()
 );
 
 create index if not exists idx_projects_user_created on public.projects (user_id, created_at desc);
 create index if not exists idx_tasks_project_created on public.tasks (project_id, created_at desc);
 create index if not exists idx_tasks_user_created on public.tasks (user_id, created_at desc);
+create index if not exists idx_pomodoro_project_created on public.pomodoro_logs (project_id, created_at desc);
+create index if not exists idx_pomodoro_user_created on public.pomodoro_logs (user_id, created_at desc);
 
 create or replace function public.set_updated_at()
 returns trigger as $$
@@ -41,6 +60,7 @@ for each row execute function public.set_updated_at();
 
 alter table public.projects enable row level security;
 alter table public.tasks enable row level security;
+alter table public.pomodoro_logs enable row level security;
 
 -- projects policies
 drop policy if exists "projects_select_own" on public.projects;
@@ -91,5 +111,31 @@ with check (auth.uid() = user_id);
 drop policy if exists "tasks_delete_own" on public.tasks;
 create policy "tasks_delete_own"
 on public.tasks
+for delete
+using (auth.uid() = user_id);
+
+-- pomodoro_logs policies
+drop policy if exists "pomodoro_select_own" on public.pomodoro_logs;
+create policy "pomodoro_select_own"
+on public.pomodoro_logs
+for select
+using (auth.uid() = user_id);
+
+drop policy if exists "pomodoro_insert_own" on public.pomodoro_logs;
+create policy "pomodoro_insert_own"
+on public.pomodoro_logs
+for insert
+with check (auth.uid() = user_id);
+
+drop policy if exists "pomodoro_update_own" on public.pomodoro_logs;
+create policy "pomodoro_update_own"
+on public.pomodoro_logs
+for update
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists "pomodoro_delete_own" on public.pomodoro_logs;
+create policy "pomodoro_delete_own"
+on public.pomodoro_logs
 for delete
 using (auth.uid() = user_id);

@@ -5,6 +5,11 @@ const CLOUD_CONFIG = window.CLOUD_CONFIG || {};
 const state = {
   projects: [],
   activeProjectId: null,
+  pomodoro: {
+    runningProjectId: null,
+    startedAt: null,
+    tickHandle: null,
+  },
   cloud: {
     enabled: false,
     client: null,
@@ -29,10 +34,14 @@ const refs = {
   projectWindow: document.getElementById("project-window"),
   tabTasks: document.getElementById("tab-tasks"),
   tabCalendar: document.getElementById("tab-calendar"),
+  tabPomodoro: document.getElementById("tab-pomodoro"),
   tasksPane: document.getElementById("tasks-pane"),
   calendarPane: document.getElementById("calendar-pane"),
+  pomodoroPane: document.getElementById("pomodoro-pane"),
   taskForm: document.getElementById("task-form"),
   taskTitle: document.getElementById("task-title"),
+  taskStart: document.getElementById("task-start"),
+  taskEnd: document.getElementById("task-end"),
   taskList: document.getElementById("task-list"),
   activeCount: document.getElementById("active-count"),
   completedList: document.getElementById("completed-list"),
@@ -58,6 +67,13 @@ const refs = {
   syncNow: document.getElementById("sync-now"),
   pushLocal: document.getElementById("push-local"),
   signOut: document.getElementById("sign-out"),
+  pomodoroTime: document.getElementById("pomodoro-time"),
+  pomodoroStart: document.getElementById("pomodoro-start"),
+  pomodoroStop: document.getElementById("pomodoro-stop"),
+  pomodoroForm: document.getElementById("pomodoro-form"),
+  pomodoroWork: document.getElementById("pomodoro-work"),
+  pomodoroEfficiency: document.getElementById("pomodoro-efficiency"),
+  pomodoroLogList: document.getElementById("pomodoro-log-list"),
 };
 
 function uid() {
@@ -100,8 +116,21 @@ function normalizeProjects(projects) {
       ? project.tasks.map((task) => ({
           id: task.id || uid(),
           title: String(task.title || "未命名子任务"),
+          startAt: task.startAt || null,
+          endAt: task.endAt || null,
           createdAt: task.createdAt || new Date().toISOString(),
           completedAt: task.completedAt || null,
+        }))
+      : [],
+    pomodoroLogs: Array.isArray(project.pomodoroLogs)
+      ? project.pomodoroLogs.map((log) => ({
+          id: log.id || uid(),
+          work: String(log.work || "未命名工作"),
+          efficiency: log.efficiency || "normal",
+          startedAt: log.startedAt || new Date().toISOString(),
+          endedAt: log.endedAt || new Date().toISOString(),
+          durationSec: Number(log.durationSec || 0),
+          createdAt: log.createdAt || new Date().toISOString(),
         }))
       : [],
   }));
@@ -135,7 +164,11 @@ function parseLocalDateInput(value) {
     return null;
   }
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  date.setSeconds(0, 0);
+  return date.toISOString();
 }
 
 function toDateInputValue(iso) {
@@ -193,6 +226,24 @@ function formatDuration(ms) {
   return `${days}天${hours}小时`;
 }
 
+function formatDurationShort(ms) {
+  const abs = Math.max(0, Math.floor(Math.abs(ms) / 1000));
+  const hours = Math.floor(abs / 3600);
+  const minutes = Math.floor((abs % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}小时${minutes}分钟`;
+  }
+  return `${minutes}分钟`;
+}
+
+function formatClock(seconds) {
+  const safe = Math.max(0, Math.floor(seconds));
+  const h = String(Math.floor(safe / 3600)).padStart(2, "0");
+  const m = String(Math.floor((safe % 3600) / 60)).padStart(2, "0");
+  const s = String(safe % 60).padStart(2, "0");
+  return `${h}:${m}:${s}`;
+}
+
 function localDateKey(iso) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
@@ -204,10 +255,10 @@ function localDateKey(iso) {
   return `${year}-${month}-${day}`;
 }
 
-function calcProgress(project) {
+function calcRangeProgress(startAt, endAt) {
   const now = Date.now();
-  const start = project.startAt ? new Date(project.startAt).getTime() : NaN;
-  const end = project.endAt ? new Date(project.endAt).getTime() : NaN;
+  const start = startAt ? new Date(startAt).getTime() : NaN;
+  const end = endAt ? new Date(endAt).getTime() : NaN;
 
   if (Number.isNaN(start) || Number.isNaN(end) || end <= start) {
     return {
@@ -233,6 +284,24 @@ function calcProgress(project) {
     percent: Math.round(ratio * 100),
     status,
     summary: `总时长 ${formatDuration(total)} · 已过去 ${formatDuration(Math.max(elapsed, 0))} · 剩余 ${formatDuration(Math.max(remain, 0))}`,
+  };
+}
+
+function calcProgress(project) {
+  return calcRangeProgress(project.startAt, project.endAt);
+}
+
+function calcTaskProgress(task) {
+  const progress = calcRangeProgress(task.startAt, task.endAt);
+  if (progress.status === "请设置有效时间区间") {
+    return {
+      ...progress,
+      summary: "请设置子任务预计开始和结束时间。",
+    };
+  }
+  return {
+    ...progress,
+    summary: `预计区间 ${formatDateTime(task.startAt)} - ${formatDateTime(task.endAt)}`,
   };
 }
 
@@ -314,13 +383,31 @@ function buildTaskItem(task, completed) {
   const checkbox = fragment.querySelector("input[type='checkbox']");
   const title = fragment.querySelector(".task-title");
   const meta = fragment.querySelector(".task-meta");
+  const progressWrap = fragment.querySelector(".task-progress-wrap");
+  const progressLabel = fragment.querySelector(".task-progress-label");
+  const progressStatus = fragment.querySelector(".task-progress-status");
+  const progressFill = fragment.querySelector(".task-progress-fill");
   const delBtn = fragment.querySelector("button");
 
   li.dataset.id = task.id;
   checkbox.checked = completed;
   checkbox.dataset.action = "toggle";
   title.textContent = task.title;
-  meta.textContent = completed ? `完成于 ${formatDateTime(task.completedAt)}` : `创建于 ${formatDateTime(task.createdAt)}`;
+  const taskProgress = calcTaskProgress(task);
+  meta.textContent = completed
+    ? `完成于 ${formatDateTime(task.completedAt)} · 预计 ${formatDateTime(task.startAt)} - ${formatDateTime(task.endAt)}`
+    : `预计 ${formatDateTime(task.startAt)} - ${formatDateTime(task.endAt)}`;
+
+  progressLabel.textContent = `${completed ? 100 : taskProgress.percent}%`;
+  progressStatus.textContent = completed ? "已完成" : taskProgress.status;
+  progressFill.style.width = `${completed ? 100 : taskProgress.percent}%`;
+  if (completed) {
+    progressFill.style.background = "linear-gradient(90deg, #7f9f90, #6a8f7f)";
+  }
+  if (!task.startAt || !task.endAt) {
+    progressWrap.classList.add("hidden");
+  }
+
   delBtn.dataset.action = "delete";
 
   return fragment;
@@ -511,12 +598,101 @@ function renderCalendar(project) {
   });
 }
 
+function getEfficiencyLabel(efficiency) {
+  if (efficiency === "high") {
+    return "高效";
+  }
+  if (efficiency === "low") {
+    return "低效";
+  }
+  return "一般";
+}
+
+function getPomodoroElapsedSec(projectId) {
+  if (!state.pomodoro.startedAt || state.pomodoro.runningProjectId !== projectId) {
+    return 0;
+  }
+  const started = new Date(state.pomodoro.startedAt).getTime();
+  if (Number.isNaN(started)) {
+    return 0;
+  }
+  return Math.floor((Date.now() - started) / 1000);
+}
+
+function updatePomodoroClock() {
+  const active = getActiveProject();
+  if (!active) {
+    return;
+  }
+  const elapsedSec = getPomodoroElapsedSec(active.id);
+  refs.pomodoroTime.textContent = formatClock(elapsedSec);
+}
+
+function startPomodoroTicker() {
+  if (state.pomodoro.tickHandle) {
+    clearInterval(state.pomodoro.tickHandle);
+  }
+  state.pomodoro.tickHandle = setInterval(updatePomodoroClock, 1000);
+}
+
+function stopPomodoroTicker() {
+  if (state.pomodoro.tickHandle) {
+    clearInterval(state.pomodoro.tickHandle);
+    state.pomodoro.tickHandle = null;
+  }
+}
+
+function renderPomodoro(project) {
+  const runningHere = state.pomodoro.runningProjectId === project.id && !!state.pomodoro.startedAt;
+  const runningElsewhere = !!state.pomodoro.startedAt && !runningHere;
+
+  refs.pomodoroTime.textContent = formatClock(getPomodoroElapsedSec(project.id));
+  refs.pomodoroStart.disabled = !!state.pomodoro.startedAt;
+  refs.pomodoroStop.disabled = !runningHere;
+
+  if (runningElsewhere) {
+    refs.pomodoroTime.textContent = "00:00:00";
+    refs.pomodoroStart.title = "另一个项目正在计时，请先切回对应项目结束计时。";
+  } else {
+    refs.pomodoroStart.title = "";
+  }
+
+  const logs = (Array.isArray(project.pomodoroLogs) ? project.pomodoroLogs : [])
+    .slice()
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  refs.pomodoroLogList.innerHTML = "";
+  if (!logs.length) {
+    const empty = document.createElement("li");
+    empty.className = "caption";
+    empty.textContent = "还没有番茄记录。";
+    refs.pomodoroLogList.appendChild(empty);
+    return;
+  }
+
+  logs.forEach((log) => {
+    const li = document.createElement("li");
+    li.className = "task-item pomodoro-log-item";
+    li.innerHTML = `
+      <div class="task-copy">
+        <p class="task-title">${escapeHtml(log.work)}</p>
+        <p class="task-meta">${formatDateTime(log.startedAt)} - ${formatDateTime(log.endedAt)} · 时长 ${formatDurationShort(log.durationSec * 1000)} · 效率 ${getEfficiencyLabel(log.efficiency)}</p>
+      </div>
+    `;
+    refs.pomodoroLogList.appendChild(li);
+  });
+}
+
 function renderViewTabs(project) {
   const isTask = project.view === "tasks";
+  const isCalendar = project.view === "calendar";
+  const isPomodoro = project.view === "pomodoro";
   refs.tabTasks.classList.toggle("active", isTask);
-  refs.tabCalendar.classList.toggle("active", !isTask);
+  refs.tabCalendar.classList.toggle("active", isCalendar);
+  refs.tabPomodoro.classList.toggle("active", isPomodoro);
   refs.tasksPane.classList.toggle("active", isTask);
-  refs.calendarPane.classList.toggle("active", !isTask);
+  refs.calendarPane.classList.toggle("active", isCalendar);
+  refs.pomodoroPane.classList.toggle("active", isPomodoro);
 }
 
 function render() {
@@ -535,6 +711,7 @@ function render() {
   renderTasks(active);
   renderTimeline(active);
   renderCalendar(active);
+  renderPomodoro(active);
   renderViewTabs(active);
 }
 
@@ -571,12 +748,28 @@ function taskToCloudRow(projectId, task, userId) {
     project_id: projectId,
     user_id: userId,
     title: task.title,
+    start_at: task.startAt,
+    end_at: task.endAt,
     created_at: task.createdAt || new Date().toISOString(),
     completed_at: task.completedAt,
   };
 }
 
-function projectsFromCloudRows(projectRows, taskRows) {
+function pomodoroLogToCloudRow(projectId, log, userId) {
+  return {
+    id: log.id,
+    project_id: projectId,
+    user_id: userId,
+    work: log.work,
+    efficiency: log.efficiency || "normal",
+    start_at: log.startedAt,
+    end_at: log.endedAt,
+    duration_sec: log.durationSec,
+    created_at: log.createdAt || new Date().toISOString(),
+  };
+}
+
+function projectsFromCloudRows(projectRows, taskRows, pomodoroRows) {
   const map = new Map();
 
   projectRows.forEach((row) => {
@@ -589,6 +782,7 @@ function projectsFromCloudRows(projectRows, taskRows) {
       view: row.view || "tasks",
       showCompleted: Boolean(row.show_completed),
       tasks: [],
+      pomodoroLogs: [],
     });
   });
 
@@ -600,8 +794,26 @@ function projectsFromCloudRows(projectRows, taskRows) {
     project.tasks.push({
       id: row.id,
       title: row.title,
+      startAt: row.start_at,
+      endAt: row.end_at,
       createdAt: row.created_at,
       completedAt: row.completed_at,
+    });
+  });
+
+  pomodoroRows.forEach((row) => {
+    const project = map.get(row.project_id);
+    if (!project) {
+      return;
+    }
+    project.pomodoroLogs.push({
+      id: row.id,
+      work: row.work,
+      efficiency: row.efficiency || "normal",
+      startedAt: row.start_at,
+      endedAt: row.end_at,
+      durationSec: Number(row.duration_sec || 0),
+      createdAt: row.created_at,
     });
   });
 
@@ -609,6 +821,7 @@ function projectsFromCloudRows(projectRows, taskRows) {
     .map((project) => ({
       ...project,
       tasks: project.tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+      pomodoroLogs: project.pomodoroLogs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     }))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
@@ -618,9 +831,10 @@ async function fetchCloudProjectsAndTasks() {
     return [];
   }
 
-  const [projectRes, taskRes] = await Promise.all([
+  const [projectRes, taskRes, pomodoroRes] = await Promise.all([
     state.cloud.client.from("projects").select("*").order("created_at", { ascending: false }),
     state.cloud.client.from("tasks").select("*").order("created_at", { ascending: false }),
+    state.cloud.client.from("pomodoro_logs").select("*").order("created_at", { ascending: false }),
   ]);
 
   if (projectRes.error) {
@@ -629,8 +843,11 @@ async function fetchCloudProjectsAndTasks() {
   if (taskRes.error) {
     throw taskRes.error;
   }
+  if (pomodoroRes.error) {
+    throw pomodoroRes.error;
+  }
 
-  return projectsFromCloudRows(projectRes.data || [], taskRes.data || []);
+  return projectsFromCloudRows(projectRes.data || [], taskRes.data || [], pomodoroRes.data || []);
 }
 
 async function withCloudWrite(successText, operation) {
@@ -675,6 +892,20 @@ async function upsertTaskCloud(projectId, task) {
   });
 }
 
+async function upsertPomodoroLogCloud(projectId, log) {
+  if (!canUseCloud()) {
+    return;
+  }
+
+  const row = pomodoroLogToCloudRow(projectId, log, state.cloud.user.id);
+  await withCloudWrite("番茄记录已同步到云端。", async () => {
+    const { error } = await state.cloud.client.from("pomodoro_logs").upsert([row], { onConflict: "id" });
+    if (error) {
+      throw error;
+    }
+  });
+}
+
 async function deleteTaskCloud(taskId) {
   if (!canUseCloud()) {
     return;
@@ -706,6 +937,9 @@ async function pushSnapshotToCloud(projects, replaceRemote) {
   const userId = state.cloud.user.id;
   const projectRows = projects.map((project) => projectToCloudRow(project, userId));
   const taskRows = projects.flatMap((project) => project.tasks.map((task) => taskToCloudRow(project.id, task, userId)));
+  const pomodoroRows = projects.flatMap((project) =>
+    (Array.isArray(project.pomodoroLogs) ? project.pomodoroLogs : []).map((log) => pomodoroLogToCloudRow(project.id, log, userId)),
+  );
 
   await withCloudWrite("本地数据已上传到云端。", async () => {
     if (projectRows.length) {
@@ -722,10 +956,18 @@ async function pushSnapshotToCloud(projects, replaceRemote) {
       }
     }
 
+    if (pomodoroRows.length) {
+      const { error } = await state.cloud.client.from("pomodoro_logs").upsert(pomodoroRows, { onConflict: "id" });
+      if (error) {
+        throw error;
+      }
+    }
+
     if (replaceRemote) {
-      const [remoteProjectsRes, remoteTasksRes] = await Promise.all([
+      const [remoteProjectsRes, remoteTasksRes, remotePomodoroRes] = await Promise.all([
         state.cloud.client.from("projects").select("id"),
         state.cloud.client.from("tasks").select("id"),
+        state.cloud.client.from("pomodoro_logs").select("id"),
       ]);
 
       if (remoteProjectsRes.error) {
@@ -734,14 +976,20 @@ async function pushSnapshotToCloud(projects, replaceRemote) {
       if (remoteTasksRes.error) {
         throw remoteTasksRes.error;
       }
+      if (remotePomodoroRes.error) {
+        throw remotePomodoroRes.error;
+      }
 
       const localProjectIds = new Set(projectRows.map((row) => row.id));
       const localTaskIds = new Set(taskRows.map((row) => row.id));
+      const localPomodoroIds = new Set(pomodoroRows.map((row) => row.id));
 
       const staleTaskIds = (remoteTasksRes.data || []).map((row) => row.id).filter((id) => !localTaskIds.has(id));
+      const stalePomodoroIds = (remotePomodoroRes.data || []).map((row) => row.id).filter((id) => !localPomodoroIds.has(id));
       const staleProjectIds = (remoteProjectsRes.data || []).map((row) => row.id).filter((id) => !localProjectIds.has(id));
 
       await deleteManyByIds("tasks", staleTaskIds);
+      await deleteManyByIds("pomodoro_logs", stalePomodoroIds);
       await deleteManyByIds("projects", staleProjectIds);
     }
   });
@@ -885,6 +1133,7 @@ async function createProject(name, startAt, endAt) {
     view: "tasks",
     showCompleted: false,
     tasks: [],
+    pomodoroLogs: [],
   };
 
   state.projects.unshift(project);
@@ -894,10 +1143,12 @@ async function createProject(name, startAt, endAt) {
   await upsertProjectCloud(project);
 }
 
-async function addTask(project, title) {
+async function addTask(project, title, startAt, endAt) {
   const task = {
     id: uid(),
     title,
+    startAt,
+    endAt,
     createdAt: new Date().toISOString(),
     completedAt: null,
   };
@@ -969,6 +1220,61 @@ async function toggleCompletedArea() {
   await upsertProjectCloud(project);
 }
 
+async function startPomodoro(project) {
+  if (state.pomodoro.startedAt) {
+    window.alert("已有一个项目在计时，请先结束当前计时。");
+    return;
+  }
+
+  state.pomodoro.runningProjectId = project.id;
+  state.pomodoro.startedAt = new Date().toISOString();
+  startPomodoroTicker();
+  render();
+}
+
+async function stopPomodoro(project) {
+  if (!state.pomodoro.startedAt || state.pomodoro.runningProjectId !== project.id) {
+    window.alert("当前项目没有正在进行的计时。");
+    return;
+  }
+
+  const work = refs.pomodoroWork.value.trim();
+  const efficiency = refs.pomodoroEfficiency.value;
+  if (!work) {
+    window.alert("请先填写本次完成了什么工作，再结束计时。");
+    return;
+  }
+
+  const startedAt = state.pomodoro.startedAt;
+  const endDate = new Date();
+  endDate.setMilliseconds(0);
+  const startedMs = new Date(startedAt).getTime();
+  const endedMs = endDate.getTime();
+  const durationSec = Math.max(1, Math.floor((endedMs - startedMs) / 1000));
+
+  const log = {
+    id: uid(),
+    work,
+    efficiency,
+    startedAt,
+    endedAt: endDate.toISOString(),
+    durationSec,
+    createdAt: new Date().toISOString(),
+  };
+
+  project.pomodoroLogs = Array.isArray(project.pomodoroLogs) ? project.pomodoroLogs : [];
+  project.pomodoroLogs.unshift(log);
+
+  state.pomodoro.runningProjectId = null;
+  state.pomodoro.startedAt = null;
+  stopPomodoroTicker();
+  refs.pomodoroForm.reset();
+
+  saveState();
+  render();
+  await upsertPomodoroLogCloud(project.id, log);
+}
+
 function bindEvents() {
   refs.projectForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1006,11 +1312,18 @@ function bindEvents() {
     }
 
     const title = refs.taskTitle.value.trim();
-    if (!title) {
+    const startAt = parseLocalDateInput(refs.taskStart.value);
+    const endAt = parseLocalDateInput(refs.taskEnd.value);
+    if (!title || !startAt || !endAt) {
+      window.alert("请填写子任务名称与预计开始/结束时间。");
+      return;
+    }
+    if (new Date(startAt).getTime() >= new Date(endAt).getTime()) {
+      window.alert("子任务结束时间必须晚于开始时间。");
       return;
     }
 
-    await addTask(project, title);
+    await addTask(project, title, startAt, endAt);
     refs.taskForm.reset();
   });
 
@@ -1048,6 +1361,7 @@ function bindEvents() {
   refs.toggleCompleted.addEventListener("click", () => void toggleCompletedArea());
   refs.tabTasks.addEventListener("click", () => void switchView("tasks"));
   refs.tabCalendar.addEventListener("click", () => void switchView("calendar"));
+  refs.tabPomodoro.addEventListener("click", () => void switchView("pomodoro"));
 
   refs.timelineForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1152,6 +1466,22 @@ function bindEvents() {
     if (state.cloud.client) {
       await state.cloud.client.auth.signOut();
     }
+  });
+
+  refs.pomodoroStart.addEventListener("click", async () => {
+    const project = getActiveProject();
+    if (!project) {
+      return;
+    }
+    await startPomodoro(project);
+  });
+
+  refs.pomodoroStop.addEventListener("click", async () => {
+    const project = getActiveProject();
+    if (!project) {
+      return;
+    }
+    await stopPomodoro(project);
   });
 }
 

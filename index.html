@@ -94,6 +94,7 @@
           <div class="view-switch" role="tablist" aria-label="项目视图切换">
             <button id="tab-tasks" class="btn btn-tab active" type="button">任务视图</button>
             <button id="tab-calendar" class="btn btn-tab" type="button">日历缩略图</button>
+            <button id="tab-pomodoro" class="btn btn-tab" type="button">番茄钟</button>
           </div>
         </header>
 
@@ -104,6 +105,8 @@
                 <h3>添加子任务</h3>
                 <form id="task-form" class="inline-form" autocomplete="off">
                   <input id="task-title" type="text" placeholder="例如：完成第三章习题 1-20" required />
+                  <input id="task-start" type="datetime-local" required />
+                  <input id="task-end" type="datetime-local" required />
                   <button type="submit" class="btn btn-primary">添加</button>
                 </form>
               </article>
@@ -131,6 +134,41 @@
               <h3>完成进度日历缩略图</h3>
               <p class="caption">每个日期展示当日完成的子任务，用于回顾阶段性产出。</p>
               <div id="calendar-grid" class="calendar-grid"></div>
+            </article>
+          </section>
+
+          <section id="pomodoro-pane" class="pane">
+            <article class="card soft pomodoro-card">
+              <h3>番茄钟（正向计时）</h3>
+              <p class="caption">开始后正向累计时长，结束时记录本次完成工作和效率。</p>
+
+              <div class="pomodoro-timer-wrap">
+                <p id="pomodoro-time" class="pomodoro-time">00:00:00</p>
+                <div class="inline-actions">
+                  <button id="pomodoro-start" class="btn btn-primary" type="button">开始计时</button>
+                  <button id="pomodoro-stop" class="btn btn-ghost" type="button">结束计时</button>
+                </div>
+              </div>
+
+              <form id="pomodoro-form" class="stack pomodoro-form" autocomplete="off">
+                <label class="field">
+                  <span>本次完成了什么工作</span>
+                  <input id="pomodoro-work" type="text" placeholder="例如：完成统计学第2章笔记整理" />
+                </label>
+                <label class="field">
+                  <span>本次效率</span>
+                  <select id="pomodoro-efficiency">
+                    <option value="high">高效</option>
+                    <option value="normal" selected>一般</option>
+                    <option value="low">低效</option>
+                  </select>
+                </label>
+              </form>
+
+              <div class="task-list-head">
+                <h3>番茄记录</h3>
+              </div>
+              <ul id="pomodoro-log-list" class="task-list"></ul>
             </article>
           </section>
 
@@ -173,6 +211,15 @@
       <div class="task-copy">
         <p class="task-title"></p>
         <p class="task-meta"></p>
+        <div class="task-progress-wrap">
+          <div class="task-progress-head">
+            <span class="task-progress-label">0%</span>
+            <span class="task-progress-status caption"></span>
+          </div>
+          <div class="task-progress-track">
+            <div class="task-progress-fill"></div>
+          </div>
+        </div>
       </div>
       <button class="btn btn-ghost btn-small" type="button">删除</button>
     </li>

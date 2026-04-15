@@ -133,6 +133,14 @@ input:focus {
   box-shadow: 0 0 0 3px rgba(126, 155, 172, 0.2);
 }
 
+select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: #f7fafb;
+  color: var(--text-1);
+}
+
 .btn {
   border: none;
   border-radius: 10px;
@@ -333,11 +341,12 @@ h3 {
 
 .inline-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .inline-form input {
-  flex: 1;
+  flex: 1 1 180px;
 }
 
 .task-list-head {
@@ -366,6 +375,10 @@ h3 {
   background: #f8fbfc;
 }
 
+.pomodoro-log-item {
+  grid-template-columns: 1fr;
+}
+
 .task-copy {
   min-width: 0;
 }
@@ -382,6 +395,38 @@ h3 {
   margin: 4px 0 0;
   color: var(--text-2);
   font-size: 0.8rem;
+}
+
+.task-progress-wrap {
+  margin-top: 6px;
+}
+
+.task-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-progress-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #3f5867;
+}
+
+.task-progress-track {
+  margin-top: 4px;
+  height: 7px;
+  border-radius: 999px;
+  background: #d7e2e8;
+  overflow: hidden;
+}
+
+.task-progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #8eaebb, #6f92a4);
+  transition: width 0.35s ease;
 }
 
 .task-check {
@@ -470,6 +515,29 @@ h3 {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
   gap: 10px;
+}
+
+.pomodoro-card {
+  padding: 14px;
+}
+
+.pomodoro-timer-wrap {
+  margin-top: 10px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pomodoro-time {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: 0.08em;
+  color: #355261;
+}
+
+.pomodoro-form {
+  margin-bottom: 8px;
 }
 
 .month-card {
@@ -616,6 +684,7 @@ h3 {
   input[type="text"],
   input[type="email"],
   input[type="datetime-local"],
+  select,
   .btn {
     font-size: 16px;
   }
